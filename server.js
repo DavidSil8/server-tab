@@ -25,7 +25,11 @@ function sendSSEToGame(gameId, data) {
   const clients = sseClients.get(gameId);
   if (clients) {
     clients.forEach(client => {
-      client.write(`data: ${JSON.stringify(data)}\n\n`);
+      try {
+        client.write(`data: ${JSON.stringify(data)}\n\n`);
+      } catch (error) {
+        console.error('Error sending SSE message:', error);
+      }
     });
   }
 }
@@ -400,14 +404,19 @@ app.post('/leave', (req, res) => {
 
     // Remove player from game
     game.players.splice(playerIndex, 1);
+    const remainingPlayers = game.players.length;
 
     // Adjust current turn if necessary
-    if (game.currentTurn >= game.players.length && game.players.length > 0) {
+    if (playerIndex < game.currentTurn) {
+      // Player left before current turn, decrement to maintain order
+      game.currentTurn--;
+    } else if (game.currentTurn >= game.players.length && game.players.length > 0) {
+      // Current turn is out of bounds, wrap to start
       game.currentTurn = 0;
     }
 
     // If no players left, clean up the game
-    if (game.players.length === 0) {
+    if (remainingPlayers === 0) {
       games.delete(gameId);
       sseClients.delete(gameId);
     } else {
@@ -423,7 +432,7 @@ app.post('/leave', (req, res) => {
     res.json({ 
       success: true, 
       message: 'Left game successfully',
-      remainingPlayers: game.players ? game.players.length : 0
+      remainingPlayers: remainingPlayers
     });
   } catch (error) {
     console.error('Error in /leave:', error);
